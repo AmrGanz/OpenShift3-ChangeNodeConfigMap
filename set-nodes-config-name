@@ -1,0 +1,23 @@
+- name: Collect the current defined Config Maps in openshift-node project
+  hosts: localhost
+  tasks:
+    - name: Collecting defined Config Maps in openshift-node project
+      shell: "oc get cm -n openshift-node -o json | jq -r '.items | .[].metadata.name'"
+      register: nodeconfigs
+- name: Assign the correct node group to corresponding node
+  hosts: nodes
+  tasks:
+    - name: Set BOOTSTRAP_CONFIG_NAME in a node
+      lineinfile:
+        path: /etc/sysconfig/atomic-openshift-node
+        regexp: '^BOOTSTRAP_CONFIG_NAME='
+        line: 'BOOTSTRAP_CONFIG_NAME={{ openshift_node_group_name }}'
+      when: 
+        - openshift_node_group_name is defined
+        - openshift_node_group_name in hostvars['localhost']['nodeconfigs'].stdout
+      register: filechanged
+    - name: Restart atomic-openshift-node service
+      service:
+        name: atomic-openshift-node.service
+        state: restarted
+      when: filechanged.changed
